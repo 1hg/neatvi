@@ -287,6 +287,7 @@ static char *led_line(char *pref, char *post, int *left, int *key, int *kmap, ch
 				sbuf_str(&sb, reg_get(y, &lnmode));
 			break;
 		case TK_CTL('a'):
+		case '\t':
 			sbuf_str(&sb, cmp);
 			cmp[0] = '\0';
 			break;
