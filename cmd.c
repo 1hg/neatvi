@@ -163,7 +163,53 @@ char *cmd_pipe(char *cmd, char *ibuf, int oproc)
 
 int cmd_exec(char *cmd)
 {
-	cmd_pipe(cmd, NULL, 0);
+	pid_t pid;
+	pid_t fg;
+	int status;
+	struct sigaction sa, oldsa;
+
+	/* Keep the pipe-based fallback when there is no terminal. */
+	if (!isatty(0) || !isatty(1)) {
+		cmd_pipe(cmd, NULL, 0);
+		return 0;
+	}
+
+	fg = tcgetpgrp(0);
+	if (fg < 0) {
+		cmd_pipe(cmd, NULL, 0);
+		return 0;
+	}
+	term_done();
+	pid = fork();
+	if (pid == 0) {
+		setpgid(0, 0);
+		execl("/bin/sh", "sh", "-c", cmd, (char *) NULL);
+		_exit(127);
+	}
+	if (pid < 0) {
+		term_init();
+		return -1;
+	}
+	setpgid(pid, pid);
+
+	/* Let the child process group own the terminal while it runs. */
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = SIG_IGN;
+	sigemptyset(&sa.sa_mask);
+	sigaction(SIGTTOU, &sa, &oldsa);
+	tcsetpgrp(0, pid);
+
+	while (waitpid(pid, &status, 0) < 0) {
+		if (errno != EINTR) {
+			status = -1;
+			break;
+		}
+	}
+
+	/* Restore the editor's foreground process group and terminal mode. */
+	tcsetpgrp(0, fg);
+	sigaction(SIGTTOU, &oldsa, NULL);
+	term_init();
 	return 0;
 }
 
